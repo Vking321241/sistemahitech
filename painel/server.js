@@ -21,6 +21,8 @@ const cfg = {
   adminPass:    process.env.ADMIN_PASSWORD || 'troque-esta-senha',
   sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(24).toString('hex'),
   dataDir:      process.env.DATA_DIR || path.join(__dirname, 'data'),
+  // Segredo compartilhado com o n8n (autentica as chamadas de enrollment)
+  n8nSecret:    process.env.N8N_SECRET || '',
 
   // Tunel / dominio
   dominioBase:  process.env.DOMINIO_BASE || 'divary.shop',
@@ -201,6 +203,11 @@ app.post('/api/clientes', exigirAuth, async (req, res) => {
     siteUrl: urlSite(sub),
     webhookUrl: urlWebhook(sub),
     dominioAuto: dominio.ok,
+    // Chave de conexao (enrollment) unica deste cliente. Vai no instalador;
+    // o PC a envia ao n8n na 1a instalacao pra configurar tudo sozinho.
+    chave: 'techos_' + crypto.randomBytes(20).toString('hex'),
+    enrolledEm: null,
+    ip: null,
     criadoEm: new Date().toISOString(),
   };
   clientes.push(cliente);
@@ -209,6 +216,7 @@ app.post('/api/clientes', exigirAuth, async (req, res) => {
   res.json({
     ok: true,
     cliente,
+    chave: cliente.chave,
     tunelConf: montarTunelConf(sub),
     dominio, // { ok } ou { ok:false, modo:'manual', motivo } → o front mostra o passo manual
     instrucaoManual: dominio.ok ? null : {
@@ -245,6 +253,49 @@ app.get('/api/config', exigirAuth, (_req, res) => {
     frpsVhostPort: cfg.frpsVhostPort,
     easypanelAuto: !!(cfg.epUrl && cfg.epToken && cfg.epProject),
   });
+});
+
+// ============================================================
+//  ENROLLMENT (maquina-a-maquina) — chamado pelo n8n
+//  Autenticado pelo cabecalho x-n8n-secret (== N8N_SECRET).
+// ============================================================
+function exigirN8N(req, res, next) {
+  if (cfg.n8nSecret && comparaSegura(req.headers['x-n8n-secret'] || '', cfg.n8nSecret)) return next();
+  res.status(401).json({ error: 'Segredo do n8n invalido' });
+}
+
+// Resolve a chave -> dados do cliente + config do tunel (o n8n usa isto)
+app.post('/api/enroll/resolve', exigirN8N, (req, res) => {
+  const chave = String(req.body?.chave || '').trim();
+  if (!chave) return res.status(400).json({ error: 'Chave ausente' });
+  const c = lerClientes().find(x => x.chave === chave);
+  if (!c) return res.status(404).json({ error: 'Chave nao encontrada' });
+  res.json({
+    ok: true,
+    nome: c.nome,
+    subdominio: c.subdominio,
+    siteUrl: c.siteUrl,
+    webhookUrl: c.webhookUrl,
+    tunel: {
+      servidor: cfg.tunelServidor,
+      porta: cfg.tunelPorta,
+      token: cfg.tunelToken,
+      subdominio: c.subdominio,
+    },
+  });
+});
+
+// Confirma o enrollment (grava o IP local e a data) — o n8n chama no fim
+app.post('/api/enroll/confirm', exigirN8N, (req, res) => {
+  const chave = String(req.body?.chave || '').trim();
+  const ip = String(req.body?.ip || '').trim() || null;
+  const clientes = lerClientes();
+  const c = clientes.find(x => x.chave === chave);
+  if (!c) return res.status(404).json({ error: 'Chave nao encontrada' });
+  c.enrolledEm = new Date().toISOString();
+  c.ip = ip;
+  salvarClientes(clientes);
+  res.json({ ok: true });
 });
 
 // ── Frontend estatico ──

@@ -148,16 +148,34 @@
   <div class="modal">
     <h2 id="md_titulo">Cliente provisionado ✅</h2>
     <div id="md_manual" class="note hidden"></div>
-    <p class="steps">
-      1) Copie/baixe o <b>tunel.conf</b> abaixo e coloque no pacote do cliente em
-      <b>deps\tunel.conf</b>.<br>
-      2) Rode o <b>INSTALAR.bat</b> no PC servidor do cliente — o túnel sobe sozinho.<br>
-      3) Configure o webhook na Uazapi: <b id="md_webhook"></b>
+
+    <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">
+      Chave de conexão (é só isto que vai no instalador)
+    </label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="preview" id="md_chave" style="flex:1;margin:0;color:var(--ok)"></div>
+      <button class="btn" id="md_copy_chave">Copiar</button>
+    </div>
+
+    <p class="steps" style="margin-top:14px">
+      1) Coloque a chave no instalador em <b>deps\chave.txt</b> (ou digite na instalação).<br>
+      2) Rode o <b>INSTALAR.bat</b> no PC servidor — ele se registra na VPS e
+      <b>configura tudo sozinho</b> (túnel + webhook da Uazapi).<br>
+      3) Webhook resultante: <b id="md_webhook"></b>
     </p>
-    <pre id="md_conf"></pre>
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn" id="md_copy">Copiar</button>
-      <button class="btn-ghost" id="md_download">Baixar tunel.conf</button>
+
+    <details style="margin-top:8px">
+      <summary style="cursor:pointer;color:var(--dim);font-size:12px">
+        Modo manual (sem chave) — usar tunel.conf
+      </summary>
+      <pre id="md_conf" style="margin-top:10px"></pre>
+      <div style="display:flex;gap:8px">
+        <button class="btn-ghost" id="md_copy">Copiar tunel.conf</button>
+        <button class="btn-ghost" id="md_download">Baixar tunel.conf</button>
+      </div>
+    </details>
+
+    <div style="display:flex;margin-top:16px">
       <div style="flex:1"></div>
       <button class="btn-ghost" id="md_fechar">Fechar</button>
     </div>
@@ -237,8 +255,11 @@ $('#novoForm').addEventListener('submit', async (e) => {
 });
 
 // ── Modal ──
+let ultimaChave = '';
 function abrirModal(r) {
   ultimoConf = r.tunelConf || '';
+  ultimaChave = r.chave || r.cliente?.chave || '';
+  $('#md_chave').textContent = ultimaChave;
   $('#md_conf').textContent = ultimoConf;
   $('#md_webhook').textContent = r.cliente.webhookUrl;
   const manual = $('#md_manual');
@@ -251,6 +272,7 @@ function abrirModal(r) {
   $('#modal').classList.remove('hidden');
 }
 $('#md_fechar').addEventListener('click', () => $('#modal').classList.add('hidden'));
+$('#md_copy_chave').addEventListener('click', () => { navigator.clipboard.writeText(ultimaChave); toast('Chave copiada'); });
 $('#md_copy').addEventListener('click', () => { navigator.clipboard.writeText(ultimoConf); toast('tunel.conf copiado'); });
 $('#md_download').addEventListener('click', () => {
   const blob = new Blob([ultimoConf], { type: 'text/plain' });
@@ -268,20 +290,26 @@ async function carregar() {
     for (const c of clientes) {
       const on = c.status === 'online';
       const el = document.createElement('div'); el.className = 'cli';
+      const ativado = c.enrolledEm
+        ? `<span class="url" style="color:var(--ok)">● ativado${c.ip ? ' · ' + esc(c.ip) : ''}</span>`
+        : `<span class="url" style="color:var(--amber)">○ aguardando 1ª instalação</span>`;
       el.innerHTML = `
         <div class="avatar">${(c.nome || c.subdominio).charAt(0).toUpperCase()}</div>
         <div class="info">
           <div class="nome">${esc(c.nome)}</div>
           <div class="url">${esc(c.siteUrl)}</div>
+          ${ativado}
         </div>
         <span class="badge ${on ? 'online' : 'offline'}"><span class="b"></span>${on ? 'online' : 'offline'}</span>
         <div class="acts">
+          <button class="btn-ghost" data-chave="${esc(c.chave || '')}">chave</button>
           <button class="btn-ghost" data-conf="${c.id}">tunel.conf</button>
           <button class="btn-ghost" data-hook="${esc(c.webhookUrl)}">webhook</button>
           <button class="btn-danger" data-del="${c.id}" data-nome="${esc(c.nome)}">×</button>
         </div>`;
       lista.appendChild(el);
     }
+    lista.querySelectorAll('[data-chave]').forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.chave); toast('Chave copiada'); });
     lista.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => location.href = `/api/clientes/${b.dataset.conf}/tunel.conf`);
     lista.querySelectorAll('[data-hook]').forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.hook); toast('URL do webhook copiada'); });
     lista.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
