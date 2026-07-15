@@ -1,0 +1,43 @@
+# ============================================================
+# Painel TechOS — deploy no EasyPanel (tipo Compose) ou docker compose.
+# TODA a configuracao e por variavel de ambiente (environment abaixo).
+# TROQUE os valores marcados com "TROQUE". NAO comite segredos reais.
+# ============================================================
+services:
+  painel:
+    build: .
+    restart: always
+    environment:
+      # ── Login do painel (obrigatorio TROCAR) ──
+      ADMIN_USER: "admin"
+      ADMIN_PASSWORD: "TROQUE-por-uma-senha-forte"
+      # Assinatura do cookie de sessao — gere: openssl rand -hex 24
+      SESSION_SECRET: "TROQUE-hex-de-48-caracteres"
+      # Segredo compartilhado com o n8n (protege /api/enroll/*) — gere outro hex
+      N8N_SECRET: "TROQUE-hex-de-48-caracteres"
+
+      # ── Dados persistentes ──
+      DATA_DIR: "/data"
+
+      # ── Tunel / dominio ──
+      DOMINIO_BASE: "divary.shop"
+      TUNEL_SERVIDOR: "tunel.divary.shop"
+      TUNEL_PORTA: "7000"
+      # O MESMO token do frps.toml da VPS
+      TUNEL_TOKEN: "TROQUE-mesmo-token-do-frps"
+      FRPS_VHOST_PORT: "8080"
+
+      # ── EasyPanel API (opcional — em branco = modo manual) ──
+      EASYPANEL_URL: ""
+      EASYPANEL_TOKEN: ""
+      EASYPANEL_PROJECT: ""
+      EASYPANEL_SERVICE: "frps"
+      EASYPANEL_CREATE_DOMAIN_PROC: "services.app.createDomain"
+    volumes:
+      - painel-data:/data
+    # Porta interna; no EasyPanel adicione o dominio (painel.divary.shop) -> 3000
+    expose:
+      - "3000"
+
+volumes:
+  painel-data:

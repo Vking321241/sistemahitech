@@ -2,3 +2,6 @@ node_modules/
 data/
 *.log
 tunel-*.conf
+.env
+*.env
+!.env.example
