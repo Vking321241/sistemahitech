@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Painel TechOS</title>
+<style>
+  :root {
+    --bg: #0a0e17; --panel: #0d1320; --panel2: #111a2b; --border: rgba(255,255,255,.07);
+    --txt: #e2e8f0; --muted: #94a3b8; --dim: #64748b; --sky: #0ea5e9; --sky2: #38bdf8;
+    --ok: #34d399; --off: #fb7185; --amber: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--txt);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  a { color: var(--sky2); }
+  button { font: inherit; cursor: pointer; border: none; border-radius: 9px; }
+  input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--txt);
+    border-radius: 9px; padding: 10px 12px; font: inherit; outline: none;
+  }
+  input:focus { border-color: var(--sky); }
+  .btn { background: var(--sky); color: #04223a; font-weight: 600; padding: 10px 16px;
+    transition: background .15s; }
+  .btn:hover { background: var(--sky2); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn-ghost { background: transparent; color: var(--muted); padding: 7px 12px; border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--txt); background: rgba(255,255,255,.04); }
+  .btn-danger { background: transparent; color: var(--off); padding: 7px 10px; border: 1px solid rgba(251,113,133,.3); }
+  .btn-danger:hover { background: rgba(251,113,133,.12); }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 18px; }
+
+  /* Login */
+  .login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+  .login .card { width: 100%; max-width: 360px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; margin-bottom: 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 12px var(--sky); }
+  .sub { color: var(--dim); font-size: 12px; margin-bottom: 20px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .err { color: var(--off); font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+  /* Header */
+  header { border-bottom: 1px solid var(--border); background: var(--panel); }
+  header .wrap { display: flex; align-items: center; gap: 12px; padding-top: 16px; padding-bottom: 16px; }
+  header .grow { flex: 1; }
+
+  /* Cards / grid */
+  .row { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 760px) { .row { grid-template-columns: 320px 1fr; } }
+  h2 { font-size: 14px; margin: 0 0 14px; color: var(--txt); }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 4px; }
+  .preview { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+    color: var(--sky2); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; margin-top: 8px; word-break: break-all; }
+
+  /* Lista */
+  .cli { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .cli:last-child { border-bottom: none; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+    background: linear-gradient(135deg,#334155,#1e293b); font-weight: 700; flex: none; }
+  .cli .info { min-width: 0; flex: 1; }
+  .cli .nome { font-weight: 600; }
+  .cli .url { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; }
+  .badge.online { color: var(--ok); background: rgba(52,211,153,.12); }
+  .badge.offline { color: var(--off); background: rgba(251,113,133,.12); }
+  .badge .b { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .acts { display: flex; gap: 6px; flex: none; }
+  .empty { color: var(--dim); text-align: center; padding: 36px 0; }
+
+  /* Modal */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; padding: 20px; z-index: 10; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: 100%; max-width: 520px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+    overflow-x: auto; font-size: 12px; color: var(--txt); }
+  .note { background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25); color: #fcd34d;
+    border-radius: 10px; padding: 12px; font-size: 13px; margin: 12px 0; }
+  .steps { font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .steps b { color: var(--txt); }
+  .hidden { display: none !important; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--border); padding: 10px 16px; border-radius: 10px;
+    font-size: 13px; opacity: 0; transition: opacity .2s; z-index: 20; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="loginView" class="login hidden">
+  <div class="card">
+    <div class="logo"><span class="dot"></span> Painel TechOS</div>
+    <div class="sub">Central de túneis e clientes</div>
+    <form id="loginForm">
+      <div class="field"><label>Usuário</label><input id="lg_user" autocomplete="username" autofocus /></div>
+      <div class="field"><label>Senha</label><input id="lg_pass" type="password" autocomplete="current-password" /></div>
+      <button class="btn" style="width:100%" type="submit">Entrar</button>
+      <div class="err" id="lg_err"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ── APP ── -->
+<div id="appView" class="hidden">
+  <header>
+    <div class="wrap">
+      <div class="logo"><span class="dot"></span> Painel TechOS</div>
+      <div class="grow"></div>
+      <button class="btn-ghost" id="btnRefresh">Atualizar</button>
+      <button class="btn-ghost" id="btnLogout">Sair</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="row">
+      <!-- Novo cliente -->
+      <div class="card">
+        <h2>Novo cliente</h2>
+        <form id="novoForm">
+          <div class="field">
+            <label>Nome do cliente</label>
+            <input id="nv_nome" placeholder="Ex.: Assistência do João" />
+          </div>
+          <div class="field">
+            <label>Subdomínio</label>
+            <input id="nv_sub" placeholder="cliente1" />
+            <div class="preview" id="nv_prev">https://cliente1.…/api/crm/webhook</div>
+            <div class="hint" id="nv_modo"></div>
+          </div>
+          <button class="btn" style="width:100%" type="submit" id="nv_btn">Provisionar cliente</button>
+          <div class="err" id="nv_err"></div>
+        </form>
+      </div>
+
+      <!-- Lista -->
+      <div class="card">
+        <h2 style="display:flex;align-items:center;gap:8px">Clientes <span id="contagem" class="hint"></span></h2>
+        <div id="lista"><div class="empty">Carregando…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal pós-criação ── -->
+<div id="modal" class="overlay hidden">
+  <div class="modal">
+    <h2 id="md_titulo">Cliente provisionado ✅</h2>
+    <div id="md_manual" class="note hidden"></div>
+    <p class="steps">
+      1) Copie/baixe o <b>tunel.conf</b> abaixo e coloque no pacote do cliente em
+      <b>deps\tunel.conf</b>.<br>
+      2) Rode o <b>INSTALAR.bat</b> no PC servidor do cliente — o túnel sobe sozinho.<br>
+      3) Configure o webhook na Uazapi: <b id="md_webhook"></b>
+    </p>
+    <pre id="md_conf"></pre>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn" id="md_copy">Copiar</button>
+      <button class="btn-ghost" id="md_download">Baixar tunel.conf</button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" id="md_fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let CFG = null;
+let ultimoConf = '';
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+async function api(method, url, body) {
+  const r = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const txt = await r.text();
+  let data = null; try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  if (!r.ok) throw new Error((data && data.error) || ('Erro ' + r.status));
+  return data;
+}
+
+// ── Auth ──
+async function checarSessao() {
+  try {
+    const me = await api('GET', '/api/me');
+    if (me.autenticado) { await entrarApp(); } else { mostrarLogin(); }
+  } catch { mostrarLogin(); }
+}
+function mostrarLogin() { $('#appView').classList.add('hidden'); $('#loginView').classList.remove('hidden'); }
+async function entrarApp() {
+  $('#loginView').classList.add('hidden'); $('#appView').classList.remove('hidden');
+  CFG = await api('GET', '/api/config');
+  atualizaModoEasyPanel();
+  atualizaPreview();
+  await carregar();
+}
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); $('#lg_err').textContent = '';
+  try {
+    await api('POST', '/api/login', { usuario: $('#lg_user').value, senha: $('#lg_pass').value });
+    await entrarApp();
+  } catch (err) { $('#lg_err').textContent = err.message; }
+});
+$('#btnLogout').addEventListener('click', async () => { await api('POST', '/api/logout'); mostrarLogin(); });
+$('#btnRefresh').addEventListener('click', carregar);
+
+// ── Novo cliente ──
+function atualizaModoEasyPanel() {
+  $('#nv_modo').textContent = CFG.easypanelAuto
+    ? 'Subdomínio será criado automaticamente no EasyPanel.'
+    : 'Modo manual: você adiciona o subdomínio no EasyPanel (o painel mostra o passo).';
+}
+function atualizaPreview() {
+  const sub = ($('#nv_sub').value || 'cliente1').toLowerCase().replace(/[^a-z0-9-]/g, '') || 'cliente1';
+  $('#nv_prev').textContent = `https://${sub}.${CFG.dominioBase}/api/crm/webhook`;
+}
+$('#nv_sub').addEventListener('input', atualizaPreview);
+
+$('#novoForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); $('#nv_err').textContent = '';
+  const btn = $('#nv_btn'); btn.disabled = true; btn.textContent = 'Provisionando…';
+  try {
+    const r = await api('POST', '/api/clientes', { nome: $('#nv_nome').value, subdominio: $('#nv_sub').value });
+    $('#nv_nome').value = ''; $('#nv_sub').value = ''; atualizaPreview();
+    abrirModal(r);
+    await carregar();
+  } catch (err) { $('#nv_err').textContent = err.message; }
+  finally { btn.disabled = false; btn.textContent = 'Provisionar cliente'; }
+});
+
+// ── Modal ──
+function abrirModal(r) {
+  ultimoConf = r.tunelConf || '';
+  $('#md_conf').textContent = ultimoConf;
+  $('#md_webhook').textContent = r.cliente.webhookUrl;
+  const manual = $('#md_manual');
+  if (r.dominio && !r.dominio.ok) {
+    manual.classList.remove('hidden');
+    manual.innerHTML = `<b>Adicione o subdomínio manualmente no EasyPanel:</b><br>` +
+      (r.instrucaoManual?.passo || '') +
+      `<br><span style="opacity:.7">(${r.dominio.motivo || ''})</span>`;
+  } else { manual.classList.add('hidden'); }
+  $('#modal').classList.remove('hidden');
+}
+$('#md_fechar').addEventListener('click', () => $('#modal').classList.add('hidden'));
+$('#md_copy').addEventListener('click', () => { navigator.clipboard.writeText(ultimoConf); toast('tunel.conf copiado'); });
+$('#md_download').addEventListener('click', () => {
+  const blob = new Blob([ultimoConf], { type: 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tunel.conf'; a.click();
+});
+
+// ── Lista ──
+async function carregar() {
+  try {
+    const clientes = await api('GET', '/api/clientes');
+    $('#contagem').textContent = clientes.length ? `(${clientes.length})` : '';
+    const lista = $('#lista');
+    if (!clientes.length) { lista.innerHTML = '<div class="empty">Nenhum cliente ainda. Provisione o primeiro ao lado.</div>'; return; }
+    lista.innerHTML = '';
+    for (const c of clientes) {
+      const on = c.status === 'online';
+      const el = document.createElement('div'); el.className = 'cli';
+      el.innerHTML = `
+        <div class="avatar">${(c.nome || c.subdominio).charAt(0).toUpperCase()}</div>
+        <div class="info">
+          <div class="nome">${esc(c.nome)}</div>
+          <div class="url">${esc(c.siteUrl)}</div>
+        </div>
+        <span class="badge ${on ? 'online' : 'offline'}"><span class="b"></span>${on ? 'online' : 'offline'}</span>
+        <div class="acts">
+          <button class="btn-ghost" data-conf="${c.id}">tunel.conf</button>
+          <button class="btn-ghost" data-hook="${esc(c.webhookUrl)}">webhook</button>
+          <button class="btn-danger" data-del="${c.id}" data-nome="${esc(c.nome)}">×</button>
+        </div>`;
+      lista.appendChild(el);
+    }
+    lista.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => location.href = `/api/clientes/${b.dataset.conf}/tunel.conf`);
+    lista.querySelectorAll('[data-hook]').forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.hook); toast('URL do webhook copiada'); });
+    lista.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm(`Remover "${b.dataset.nome}" do painel?`)) return;
+      await api('DELETE', `/api/clientes/${b.dataset.del}`); toast('Cliente removido'); carregar();
+    });
+  } catch (err) {
+    if (/autenticado/i.test(err.message)) mostrarLogin();
+    else $('#lista').innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+  }
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+
+// Atualiza status a cada 20s
+setInterval(() => { if (!$('#appView').classList.contains('hidden')) carregar(); }, 20000);
+
+checarSessao();
+</script>
+</body>
+</html>
