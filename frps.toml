@@ -1,0 +1,25 @@
+# ============================================================
+# frps.toml — servidor do tunel (roda na SUA VPS, dentro do EasyPanel)
+# ------------------------------------------------------------
+# Este e o "seu proprio ngrok". Todos os clientes (PCs com TechOS)
+# conectam aqui e ganham um subdominio publico do SEU dominio.
+#
+# TROQUE o token abaixo por um valor secreto e longo. Gere um com:
+#   openssl rand -hex 24
+# O MESMO token vai no tunel.conf de todos os clientes.
+# ============================================================
+
+# Porta de CONTROLE — os clientes (frpc) conectam aqui.
+# Precisa ficar publicada/aberta na VPS (porta 7000/TCP).
+bindPort = 7000
+
+# Porta HTTP interna — o EasyPanel/Traefik roteia os dominios dos
+# clientes para ca. NAO precisa abrir no firewall (fica interna).
+vhostHTTPPort = 8080
+
+# Seu dominio base. Cada cliente vira <subdominio>.divary.shop
+subdomainHost = "divary.shop"
+
+# Autenticacao (o mesmo token em todos os clientes)
+auth.method = "token"
+auth.token = "TROQUE_ESTE_TOKEN_POR_UM_SECRETO_LONGO"

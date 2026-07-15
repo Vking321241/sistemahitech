@@ -1,0 +1,18 @@
+# ============================================================
+# Alternativa via "Compose" do EasyPanel (se preferir a App type).
+# Cole este compose num servico do tipo Compose e suba o frps.toml
+# junto (mesma pasta do compose na VPS).
+# ------------------------------------------------------------
+# Depois, no EasyPanel, adicione os DOMINIOS dos clientes apontando
+# para este servico na porta 8080 (o EasyPanel cuida do HTTPS).
+# ============================================================
+services:
+  frps:
+    image: snowdreamtech/frps:latest
+    restart: always
+    ports:
+      - "7000:7000"          # controle: clientes conectam em VPS:7000 (abra no firewall)
+    expose:
+      - "8080"               # vhost HTTP interno: o Traefik do EasyPanel roteia os dominios pra ca
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
