@@ -5,13 +5,16 @@ os clientes do TechOS. Cada cliente tem um PC servidor local (acessado na rede
 pelo IP, ex.: `http://192.168.0.x:8743`); o painel cuida do túnel que expõe esse
 PC na internet para a Uazapi entregar as mensagens.
 
-## O que ele faz (MVP)
+## O que ele faz
 - **Login único** de admin.
-- **Provisionar cliente:** informa nome + subdomínio → gera o `tunel.conf`, cria o
-  subdomínio no EasyPanel (automático via API, com fallback manual) e mostra a URL
-  do webhook.
+- **Provisionar cliente:** nome + subdomínio (+ credenciais da Uazapi, opcional) →
+  gera a **chave de conexão**, o `tunel.conf` e a URL do webhook. Cria o subdomínio
+  no EasyPanel se a API estiver configurada; senão mostra o passo manual.
+- **Enrollment zero-toque (sem n8n):** o instalador manda a chave para
+  `POST /api/enroll/self`; o painel devolve a config do túnel + credenciais da
+  Uazapi e **já configura o webhook na instância Uazapi do cliente** sozinho.
 - **Monitorar:** lista os clientes com status **online/offline** (pinga a URL pública
-  de cada um a cada 20s) e botões para baixar o `tunel.conf` e copiar o webhook.
+  de cada um a cada 20s), botões de chave/uazapi/tunel.conf/webhook.
 
 ## Deploy no EasyPanel
 1. **+ Create → App**, source **Dockerfile** apontando pra pasta `painel/`
@@ -38,9 +41,15 @@ Gere um token permanente e descubra o nome exato do procedimento de criar domín
 na sua versão (varia). Se o automático falhar, o painel mostra o motivo e o passo
 manual — nunca trava o cadastro. Ajuste `EASYPANEL_CREATE_DOMAIN_PROC` se necessário.
 
-## Fluxo de um cliente novo
-1. No painel: **Provisionar cliente** (nome + subdomínio).
-2. Baixe o `tunel.conf` e coloque no pacote do cliente em `deps\tunel.conf`.
-3. Rode o `INSTALAR.bat` no PC servidor do cliente — o túnel sobe sozinho.
-4. Configure o webhook na Uazapi: `https://<sub>.<dominio>/api/crm/webhook`.
-5. No TechOS: **Configurações → Atendimento** → URL/token da Uazapi + Ativo.
+## Fluxo de um cliente novo (zero-toque)
+1. No painel: **Provisionar cliente** (nome + subdomínio + URL/token da Uazapi).
+2. No EasyPanel: adicione o domínio `<sub>.<dominio>` no app **frps**, porta
+   **8080** (único passo manual; ou deixe a API do EasyPanel configurada).
+3. **Copie a chave** e cole no instalador (`deps\chave.txt` ou digite quando
+   o `INSTALAR.bat` pedir). Pronto: o instalador registra no painel, o painel
+   configura o webhook na Uazapi, e o instalador grava `frpc.toml` +
+   `crm-config.json` e sobe o túnel.
+
+Sem as credenciais da Uazapi no painel, o túnel funciona do mesmo jeito;
+só o webhook/envio ficam para configurar depois (botão **uazapi** no painel
+reaplica o webhook a qualquer momento).

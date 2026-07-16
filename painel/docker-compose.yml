@@ -13,8 +13,6 @@ services:
       ADMIN_PASSWORD: "TROQUE-por-uma-senha-forte"
       # Assinatura do cookie de sessao — gere: openssl rand -hex 24
       SESSION_SECRET: "TROQUE-hex-de-48-caracteres"
-      # Segredo compartilhado com o n8n (protege /api/enroll/*) — gere outro hex
-      N8N_SECRET: "TROQUE-hex-de-48-caracteres"
 
       # ── Dados persistentes ──
       DATA_DIR: "/data"

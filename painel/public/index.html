@@ -129,6 +129,15 @@
             <div class="preview" id="nv_prev">https://cliente1.…/api/crm/webhook</div>
             <div class="hint" id="nv_modo"></div>
           </div>
+          <div class="field">
+            <label>Uazapi: URL da instância (opcional)</label>
+            <input id="nv_uurl" placeholder="https://xxxx.uazapi.com" />
+          </div>
+          <div class="field">
+            <label>Uazapi: token da instância (opcional)</label>
+            <input id="nv_utoken" placeholder="token da instância" />
+            <div class="hint">Com isto preenchido, a instalação configura o webhook e o envio <b>sozinha</b>: basta copiar a chave.</div>
+          </div>
           <button class="btn" style="width:100%" type="submit" id="nv_btn">Provisionar cliente</button>
           <div class="err" id="nv_err"></div>
         </form>
@@ -159,14 +168,14 @@
 
     <p class="steps" style="margin-top:14px">
       1) Coloque a chave no instalador em <b>deps\chave.txt</b> (ou digite na instalação).<br>
-      2) Rode o <b>INSTALAR.bat</b> no PC servidor — ele se registra na VPS e
-      <b>configura tudo sozinho</b> (túnel + webhook da Uazapi).<br>
+      2) Rode o <b>INSTALAR.bat</b> no PC servidor: ele se registra na VPS e
+      <b>configura tudo sozinho</b> (túnel, webhook e envio da Uazapi).<br>
       3) Webhook resultante: <b id="md_webhook"></b>
     </p>
 
     <details style="margin-top:8px">
       <summary style="cursor:pointer;color:var(--dim);font-size:12px">
-        Modo manual (sem chave) — usar tunel.conf
+        Modo manual (sem chave): usar tunel.conf
       </summary>
       <pre id="md_conf" style="margin-top:10px"></pre>
       <div style="display:flex;gap:8px">
@@ -178,6 +187,32 @@
     <div style="display:flex;margin-top:16px">
       <div style="flex:1"></div>
       <button class="btn-ghost" id="md_fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Uazapi (editar credenciais do cliente) ── -->
+<div id="modalUz" class="overlay hidden">
+  <div class="modal">
+    <h2 id="uz_titulo">Uazapi do cliente</h2>
+    <div class="field">
+      <label>URL da instância</label>
+      <input id="uz_url" placeholder="https://xxxx.uazapi.com" />
+    </div>
+    <div class="field">
+      <label>Token da instância</label>
+      <input id="uz_token" placeholder="token da instância" />
+    </div>
+    <div class="hint" style="margin-bottom:12px">
+      Salvando com os dois campos preenchidos, a próxima instalação (ou o botão
+      abaixo) configura o webhook na Uazapi e o envio no TechOS sozinha.
+    </div>
+    <div class="err" id="uz_err"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn" id="uz_salvar">Salvar</button>
+      <button class="btn-ghost" id="uz_aplicar">Salvar e aplicar webhook</button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" id="uz_fechar">Fechar</button>
     </div>
   </div>
 </div>
@@ -246,8 +281,13 @@ $('#novoForm').addEventListener('submit', async (e) => {
   e.preventDefault(); $('#nv_err').textContent = '';
   const btn = $('#nv_btn'); btn.disabled = true; btn.textContent = 'Provisionando…';
   try {
-    const r = await api('POST', '/api/clientes', { nome: $('#nv_nome').value, subdominio: $('#nv_sub').value });
-    $('#nv_nome').value = ''; $('#nv_sub').value = ''; atualizaPreview();
+    const r = await api('POST', '/api/clientes', {
+      nome: $('#nv_nome').value,
+      subdominio: $('#nv_sub').value,
+      uazapiUrl: $('#nv_uurl').value,
+      uazapiToken: $('#nv_utoken').value,
+    });
+    $('#nv_nome').value = ''; $('#nv_sub').value = ''; $('#nv_uurl').value = ''; $('#nv_utoken').value = ''; atualizaPreview();
     abrirModal(r);
     await carregar();
   } catch (err) { $('#nv_err').textContent = err.message; }
@@ -293,16 +333,20 @@ async function carregar() {
       const ativado = c.enrolledEm
         ? `<span class="url" style="color:var(--ok)">● ativado${c.ip ? ' · ' + esc(c.ip) : ''}</span>`
         : `<span class="url" style="color:var(--amber)">○ aguardando 1ª instalação</span>`;
+      const uz = (c.uazapiUrl && c.uazapiToken)
+        ? `<span class="url" style="color:var(--ok)"> · uazapi ok${c.webhookAplicadoEm ? ' · webhook aplicado' : ''}</span>`
+        : `<span class="url" style="color:var(--amber)"> · sem uazapi</span>`;
       el.innerHTML = `
         <div class="avatar">${(c.nome || c.subdominio).charAt(0).toUpperCase()}</div>
         <div class="info">
           <div class="nome">${esc(c.nome)}</div>
           <div class="url">${esc(c.siteUrl)}</div>
-          ${ativado}
+          <span style="white-space:nowrap">${ativado}${uz}</span>
         </div>
         <span class="badge ${on ? 'online' : 'offline'}"><span class="b"></span>${on ? 'online' : 'offline'}</span>
         <div class="acts">
           <button class="btn-ghost" data-chave="${esc(c.chave || '')}">chave</button>
+          <button class="btn-ghost" data-uz="${c.id}">uazapi</button>
           <button class="btn-ghost" data-conf="${c.id}">tunel.conf</button>
           <button class="btn-ghost" data-hook="${esc(c.webhookUrl)}">webhook</button>
           <button class="btn-danger" data-del="${c.id}" data-nome="${esc(c.nome)}">×</button>
@@ -310,6 +354,7 @@ async function carregar() {
       lista.appendChild(el);
     }
     lista.querySelectorAll('[data-chave]').forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.chave); toast('Chave copiada'); });
+    lista.querySelectorAll('[data-uz]').forEach(b => b.onclick = () => abrirModalUz(clientes.find(c => c.id === b.dataset.uz)));
     lista.querySelectorAll('[data-conf]').forEach(b => b.onclick = () => location.href = `/api/clientes/${b.dataset.conf}/tunel.conf`);
     lista.querySelectorAll('[data-hook]').forEach(b => b.onclick = () => { navigator.clipboard.writeText(b.dataset.hook); toast('URL do webhook copiada'); });
     lista.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
@@ -322,6 +367,44 @@ async function carregar() {
   }
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m])); }
+
+// ── Modal Uazapi ──
+let uzCliente = null;
+function abrirModalUz(c) {
+  if (!c) return;
+  uzCliente = c;
+  $('#uz_titulo').textContent = `Uazapi: ${c.nome}`;
+  $('#uz_url').value = c.uazapiUrl || '';
+  $('#uz_token').value = c.uazapiToken || '';
+  $('#uz_err').textContent = '';
+  $('#modalUz').classList.remove('hidden');
+}
+async function salvarUz() {
+  await api('PUT', `/api/clientes/${uzCliente.id}`, {
+    uazapiUrl: $('#uz_url').value,
+    uazapiToken: $('#uz_token').value,
+  });
+}
+$('#uz_fechar').addEventListener('click', () => $('#modalUz').classList.add('hidden'));
+$('#uz_salvar').addEventListener('click', async () => {
+  $('#uz_err').textContent = '';
+  try {
+    await salvarUz();
+    $('#modalUz').classList.add('hidden');
+    toast('Credenciais da Uazapi salvas');
+    carregar();
+  } catch (err) { $('#uz_err').textContent = err.message; }
+});
+$('#uz_aplicar').addEventListener('click', async () => {
+  $('#uz_err').textContent = '';
+  try {
+    await salvarUz();
+    await api('POST', `/api/clientes/${uzCliente.id}/uazapi/aplicar`);
+    $('#modalUz').classList.add('hidden');
+    toast('Webhook aplicado na Uazapi');
+    carregar();
+  } catch (err) { $('#uz_err').textContent = err.message; }
+});
 
 // Atualiza status a cada 20s
 setInterval(() => { if (!$('#appView').classList.contains('hidden')) carregar(); }, 20000);

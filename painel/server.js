@@ -21,8 +21,6 @@ const cfg = {
   adminPass:    process.env.ADMIN_PASSWORD || 'troque-esta-senha',
   sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(24).toString('hex'),
   dataDir:      process.env.DATA_DIR || path.join(__dirname, 'data'),
-  // Segredo compartilhado com o n8n (autentica as chamadas de enrollment)
-  n8nSecret:    process.env.N8N_SECRET || '',
 
   // Tunel / dominio
   dominioBase:  process.env.DOMINIO_BASE || 'divary.shop',
@@ -127,6 +125,33 @@ function montarTunelConf(sub) {
     '',
   ].join('\n');
 }
+function semBarra(s) { return String(s || '').trim().replace(/\/+$/, ''); }
+
+// ── Seta o webhook na instancia da Uazapi do cliente ──
+// POST {uazapiUrl}/webhook  com header token e body { enabled, url, events }.
+// Nunca lanca: devolve { ok } ou { ok:false, motivo } pro chamador decidir.
+async function setarWebhookUazapi(c) {
+  if (!c.uazapiUrl || !c.uazapiToken) {
+    return { ok: false, motivo: 'Cliente sem credenciais da Uazapi no painel.' };
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(semBarra(c.uazapiUrl) + '/webhook', {
+      method: 'POST',
+      headers: { token: c.uazapiToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, url: urlWebhook(c.subdominio), events: ['messages'] }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    const txt = await r.text();
+    if (!r.ok) return { ok: false, motivo: `Uazapi HTTP ${r.status}: ${txt.slice(0, 200)}` };
+    return { ok: true };
+  } catch (e) {
+    clearTimeout(t);
+    return { ok: false, motivo: `Falha ao chamar a Uazapi: ${e.message}` };
+  }
+}
 
 // ── Cria o dominio no EasyPanel (defensivo; se falhar, modo manual) ──
 async function criarDominioEasyPanel(sub) {
@@ -204,8 +229,14 @@ app.post('/api/clientes', exigirAuth, async (req, res) => {
     webhookUrl: urlWebhook(sub),
     dominioAuto: dominio.ok,
     // Chave de conexao (enrollment) unica deste cliente. Vai no instalador;
-    // o PC a envia ao n8n na 1a instalacao pra configurar tudo sozinho.
+    // o PC a envia ao painel na 1a instalacao pra configurar tudo sozinho.
     chave: 'techos_' + crypto.randomBytes(20).toString('hex'),
+    // Credenciais da instancia Uazapi deste cliente (opcionais; podem ser
+    // preenchidas depois). Com elas, o enrollment configura o webhook sozinho
+    // e o instalador ja grava o crm-config.json pronto.
+    uazapiUrl: semBarra(req.body?.uazapiUrl || ''),
+    uazapiToken: String(req.body?.uazapiToken || '').trim(),
+    webhookAplicadoEm: null,
     enrolledEm: null,
     ip: null,
     criadoEm: new Date().toISOString(),
@@ -223,6 +254,35 @@ app.post('/api/clientes', exigirAuth, async (req, res) => {
       passo: `No EasyPanel, no app "${cfg.epService}", adicione o dominio ${sub}.${cfg.dominioBase} apontando para a porta ${cfg.frpsVhostPort}.`,
     },
   });
+});
+
+// ── Editar cliente (nome e credenciais da Uazapi) ──
+app.put('/api/clientes/:id', exigirAuth, (req, res) => {
+  const clientes = lerClientes();
+  const c = clientes.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  if (req.body?.nome !== undefined) {
+    const nome = String(req.body.nome).trim();
+    if (!nome) return res.status(400).json({ error: 'Nome nao pode ficar vazio.' });
+    c.nome = nome;
+  }
+  if (req.body?.uazapiUrl !== undefined)   c.uazapiUrl = semBarra(req.body.uazapiUrl);
+  if (req.body?.uazapiToken !== undefined) c.uazapiToken = String(req.body.uazapiToken).trim();
+  salvarClientes(clientes);
+  res.json({ ok: true, cliente: c });
+});
+
+// ── Aplicar o webhook na Uazapi agora (botao no painel) ──
+app.post('/api/clientes/:id/uazapi/aplicar', exigirAuth, async (req, res) => {
+  const clientes = lerClientes();
+  const c = clientes.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: 'Cliente nao encontrado' });
+  const r = await setarWebhookUazapi(c);
+  if (r.ok) {
+    c.webhookAplicadoEm = new Date().toISOString();
+    salvarClientes(clientes);
+  }
+  res.status(r.ok ? 200 : 502).json(r.ok ? { ok: true, webhookUrl: urlWebhook(c.subdominio) } : { error: r.motivo });
 });
 
 // ── Baixar o tunel.conf de um cliente ──
@@ -256,20 +316,31 @@ app.get('/api/config', exigirAuth, (_req, res) => {
 });
 
 // ============================================================
-//  ENROLLMENT (maquina-a-maquina) — chamado pelo n8n
-//  Autenticado pelo cabecalho x-n8n-secret (== N8N_SECRET).
+//  ENROLLMENT (maquina-a-maquina) — chamado pelo INSTALAR.bat
+//  A propria CHAVE (unica e secreta por cliente) autentica.
+//  Tudo acontece aqui no painel, sem intermediarios:
+//    1. resolve a chave -> cliente;
+//    2. configura o webhook na instancia Uazapi do cliente (se
+//       as credenciais estiverem cadastradas no painel);
+//    3. marca como enrolled (IP local + data);
+//    4. devolve a config completa (tunel + Uazapi) pro instalador
+//       gravar frpc.toml e crm-config.json.
 // ============================================================
-function exigirN8N(req, res, next) {
-  if (cfg.n8nSecret && comparaSegura(req.headers['x-n8n-secret'] || '', cfg.n8nSecret)) return next();
-  res.status(401).json({ error: 'Segredo do n8n invalido' });
-}
-
-// Resolve a chave -> dados do cliente + config do tunel (o n8n usa isto)
-app.post('/api/enroll/resolve', exigirN8N, (req, res) => {
+app.post('/api/enroll/self', async (req, res) => {
   const chave = String(req.body?.chave || '').trim();
+  const ip = String(req.body?.ip || '').trim() || null;
   if (!chave) return res.status(400).json({ error: 'Chave ausente' });
-  const c = lerClientes().find(x => x.chave === chave);
+  const clientes = lerClientes();
+  const c = clientes.find(x => x.chave === chave);
   if (!c) return res.status(404).json({ error: 'Chave nao encontrada' });
+
+  const webhook = await setarWebhookUazapi(c);
+
+  c.enrolledEm = new Date().toISOString();
+  c.ip = ip;
+  if (webhook.ok) c.webhookAplicadoEm = c.enrolledEm;
+  salvarClientes(clientes);
+
   res.json({
     ok: true,
     nome: c.nome,
@@ -282,20 +353,13 @@ app.post('/api/enroll/resolve', exigirN8N, (req, res) => {
       token: cfg.tunelToken,
       subdominio: c.subdominio,
     },
+    // Credenciais pro instalador gravar o crm-config.json (envio de msgs)
+    uazapi_url: c.uazapiUrl || null,
+    uazapi_token: c.uazapiToken || null,
+    // Status da configuracao do webhook (recebimento de msgs)
+    webhook_aplicado: webhook.ok,
+    webhook_motivo: webhook.ok ? null : webhook.motivo,
   });
-});
-
-// Confirma o enrollment (grava o IP local e a data) — o n8n chama no fim
-app.post('/api/enroll/confirm', exigirN8N, (req, res) => {
-  const chave = String(req.body?.chave || '').trim();
-  const ip = String(req.body?.ip || '').trim() || null;
-  const clientes = lerClientes();
-  const c = clientes.find(x => x.chave === chave);
-  if (!c) return res.status(404).json({ error: 'Chave nao encontrada' });
-  c.enrolledEm = new Date().toISOString();
-  c.ip = ip;
-  salvarClientes(clientes);
-  res.json({ ok: true });
 });
 
 // ── Frontend estatico ──
